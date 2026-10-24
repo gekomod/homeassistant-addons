@@ -27,7 +27,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
             ("out_errors", "Błędy TX", None),
         ]:
             entities.append(HPPortSensor(coordinator, entry, idx, key, f"{interface['name']} {label}", unit))
-        entities.append(HPPortSensor(coordinator, entry, idx, "poe_used", f"{interface['name']} PoE pobór", "mW"))
+        entities.append(HPPortSensor(coordinator, entry, idx, "poe_used", f"{interface['name']} PoE pobór", "W", SensorDeviceClass.POWER))
     async_add_entities(entities)
 
 
@@ -59,18 +59,19 @@ class HPSystemSensor(HPBase, SensorEntity):
     def native_value(self):
         value = self.coordinator.data.get(self.key)
         try:
-            return int(value) if value is not None else None
+            return (round(int(value) / 1000, 3) if self.key == "poe_used" else int(value)) if value is not None else None
         except (ValueError, TypeError):
             return value
 
 
 class HPPortSensor(HPBase, SensorEntity):
-    def __init__(self, coordinator, entry, idx, key, label, unit):
+    def __init__(self, coordinator, entry, idx, key, label, unit, device_class=None):
         super().__init__(coordinator, entry, f"port_{idx}_{key}")
         self.idx = idx
         self.key = key
         self._attr_name = label
         self._attr_native_unit_of_measurement = unit
+        self._attr_device_class = device_class
         self._attr_state_class = (
             SensorStateClass.TOTAL_INCREASING
             if key in ("in_octets", "out_octets", "in_errors", "out_errors")
