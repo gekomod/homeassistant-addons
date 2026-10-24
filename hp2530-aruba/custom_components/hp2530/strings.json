@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "HP 2530 Aruba",
+        "description": "Configure read-only SNMP access to your switch.",
+        "data": {
+          "name": "Device name",
+          "host": "Switch IP address or hostname",
+          "community": "Read-only SNMP community",
+          "snmp_version": "SNMP version",
+          "port": "SNMP port"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to read the system description. Check the address, SNMP version, community and network access."
+    },
+    "abort": {
+      "already_configured": "This switch is already configured."
+    }
+  }
+}
