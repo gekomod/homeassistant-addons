@@ -34,7 +34,7 @@ IF_OIDS = {
 POE_OIDS = {
     "poe_admin": "1.3.6.1.2.1.105.1.1.1.3",
     "poe_detect": "1.3.6.1.2.1.105.1.1.1.6",
-    "poe_used": "1.3.6.1.2.1.105.1.1.1.15",
+    "poe_used": "1.3.6.1.2.1.105.1.1.1.9",
 }
 
 
@@ -50,15 +50,23 @@ def _value(line: str) -> str:
 
 
 def _number(raw: str):
+    """Extract numeric values, including SNMP enums like deliveringPower(3)."""
+    if " = " in raw:
+        raw = raw.split(" = ", 1)[1].strip()
+    if raw.lower().startswith("timeticks:"):
+        match = re.search(r"\((\d+)\)", raw)
+        return int(match.group(1)) // 100 if match else None
+    enum = re.search(r"\((-?\d+)\)\s*$", raw)
+    if enum:
+        return int(enum.group(1))
     match = re.search(
-        r"(?:INTEGER|Gauge32|Counter32|Counter64|Gauge|Timeticks|Unsigned32):\s*(?:\(([^)]+)\)\s*)?(-?\d+)",
+        r"(?:INTEGER|Gauge32|Counter32|Counter64|Gauge|Unsigned32):\s*(-?\d+)",
         raw, re.I,
     )
     if match:
-        return int(match.group(2))
+        return int(match.group(1))
     match = re.search(r'(?:STRING|OCTET STRING):\s*"?(.+?)"?$', raw, re.I)
-    return match.group(1).strip('"') if match else raw.strip()
-
+    return match.group(1).strip('"') if match else raw.strip().strip('"')
 
 def _suffix(line: str, oid: str):
     left = line.split(" = ", 1)[0].strip().lstrip(".")
