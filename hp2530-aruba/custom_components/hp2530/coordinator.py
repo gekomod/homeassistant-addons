@@ -34,7 +34,9 @@ IF_OIDS = {
 POE_OIDS = {
     "poe_admin": "1.3.6.1.2.1.105.1.1.1.3",
     "poe_detect": "1.3.6.1.2.1.105.1.1.1.6",
-    "poe_used": "1.3.6.1.2.1.105.1.1.1.9",
+    # HP-ICF-POE-MIB: hpicfPoePethPsePortActualPower, reported in milliwatts.
+    # The standard POWER-ETHERNET-MIB power column is empty on this firmware.
+    "poe_used": "1.3.6.1.4.1.11.2.14.11.1.9.1.1.1.8",
 }
 
 
@@ -43,9 +45,9 @@ def _value(line: str) -> str:
         return ""
     raw = line.split(" = ", 1)[1].strip()
     if raw.lower().startswith("timeticks:"):
-        match = re.search(r"\((\d+)\)", raw)
+        match = re.search(r"\\((\\d+)\\)", raw)
         return str(int(match.group(1)) // 100) if match else ""
-    raw = re.sub(r"^[A-Za-z][A-Za-z0-9 -]*:\s*", "", raw)
+    raw = re.sub(r"^[A-Za-z][A-Za-z0-9 -]*:\\s*", "", raw)
     return raw.strip().strip('"')
 
 
@@ -54,19 +56,20 @@ def _number(raw: str):
     if " = " in raw:
         raw = raw.split(" = ", 1)[1].strip()
     if raw.lower().startswith("timeticks:"):
-        match = re.search(r"\((\d+)\)", raw)
+        match = re.search(r"\\((\\d+)\\)", raw)
         return int(match.group(1)) // 100 if match else None
-    enum = re.search(r"\((-?\d+)\)\s*$", raw)
+    enum = re.search(r"\\((-?\\d+)\\)\\s*$", raw)
     if enum:
         return int(enum.group(1))
     match = re.search(
-        r"(?:INTEGER|Gauge32|Counter32|Counter64|Gauge|Unsigned32):\s*(-?\d+)",
+        r"(?:INTEGER|Gauge32|Counter32|Counter64|Gauge|Unsigned32):\\s*(-?\\d+)",
         raw, re.I,
     )
     if match:
         return int(match.group(1))
-    match = re.search(r'(?:STRING|OCTET STRING):\s*"?(.+?)"?$', raw, re.I)
+    match = re.search(r'(?:STRING|OCTET STRING):\\s*"?(.+?)"?$', raw, re.I)
     return match.group(1).strip('"') if match else raw.strip().strip('"')
+
 
 def _suffix(line: str, oid: str):
     left = line.split(" = ", 1)[0].strip().lstrip(".")
@@ -146,7 +149,7 @@ class HP2530Coordinator(DataUpdateCoordinator):
                 low = name.lower()
                 if not (
                     low.startswith(("1/", "port", "ethernet", "gigabit", "eth"))
-                    or re.fullmatch(r"\d+", name)
+                    or re.fullmatch(r"\\d+", name)
                 ):
                     continue
                 data["interfaces"][idx] = {
