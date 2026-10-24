@@ -1,96 +1,50 @@
-/* HP 2530 Aruba dashboard card — port link and PoE overview. */
+/* HP Aruba 2530 — modern network operations card for Home Assistant. */
 class HP2530Card extends HTMLElement {
-  setConfig(config) { this.config = config || {}; }
-  set hass(hass) { this._hass = hass; this.render(); }
-  getCardSize() { return 10; }
-
+  constructor() { super(); this._selectedPort=null; this._filter='all'; this._search=''; this._last={}; this._rates={}; }
+  setConfig(config) { this.config=config||{}; }
+  set hass(hass) { this._hass=hass; this.render(); }
+  getCardSize() { return 12; }
+  esc(v) { return String(v==null?'—':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  bytes(v) { let n=Number(v); if(!Number.isFinite(n)||n<0)return '—'; const u=['B','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<u.length-1){n/=1024;i++;}return n.toFixed(i?1:0)+' '+u[i]; }
+  rate(v) { const n=Number(v);if(!Number.isFinite(n)||n<0)return '—';if(n>=1e9)return (n/1e9).toFixed(2)+' Gb/s';if(n>=1e6)return (n/1e6).toFixed(1)+' Mb/s';if(n>=1e3)return Math.round(n/1e3)+' kb/s';return Math.round(n)+' b/s'; }
   render() {
-    if (!this._hass) return;
-    const states = this._hass.states;
-    const entities = Object.values(states).filter(function (s) {
-      return s.entity_id.indexOf('sensor.hp2530_') === 0 ||
-        s.entity_id.indexOf('binary_sensor.hp2530_') === 0 ||
-        s.entity_id.indexOf('sensor.hp_2530_') === 0 ||
-        s.entity_id.indexOf('binary_sensor.hp_2530_') === 0;
-    });
-    const find = function (part) { return entities.find(function (s) { return s.entity_id.indexOf(part) !== -1; }); };
-    const desc = find('opis');
-    const up = find('uptime');
-    const active = find('porty_aktywne');
-    const down = find('porty_nieaktywne');
-    const esc = function (value) {
-      return String(value == null ? '—' : value).replace(/[&<>"']/g, function (c) {
-        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
-      });
-    };
-    const ports = entities.filter(function (s) {
-      return s.entity_id.indexOf('binary_sensor.') === 0 && s.entity_id.endsWith('_link');
-    }).sort(function (a, b) {
-      const ai = Number((a.attributes || {}).port_index || ((a.entity_id.match(/port_(\d+)/) || [])[1] || 999));
-      const bi = Number((b.attributes || {}).port_index || ((b.entity_id.match(/port_(\d+)/) || [])[1] || 999));
-      return ai - bi || a.entity_id.localeCompare(b.entity_id, undefined, {numeric:true});
-    });
-    const on = ports.filter(function (p) { return p.state === 'on'; }).length;
-    const poeKnown = ports.filter(function (p) { return p.attributes && p.attributes.poe_supported_by_snmp; }).length;
-    const poeEnabled = ports.filter(function (p) { return p.attributes && p.attributes.poe_enabled === true; }).length;
-    const poeDelivering = ports.filter(function (p) { return p.attributes && p.attributes.poe_status_code === 3; }).length;
-    const watts = ports.reduce(function (sum, p) { return sum + (Number((p.attributes || {}).poe_power_w) || 0); }, 0);
-    const seconds = Number(up && up.state);
-    const uptimeText = Number.isFinite(seconds) && seconds >= 0
-      ? Math.floor(seconds / 86400) + ' d ' + Math.floor((seconds % 86400) / 3600) + ' h'
-      : (up ? up.state : '—');
-
-    const portMarkup = ports.length ? ports.map(function (p) {
-      const a = p.attributes || {};
-      const linkUp = p.state === 'on';
-      const powered = a.poe_status_code === 3;
-      const searching = a.poe_status_code === 2;
-      const fault = a.poe_status_code === 4 || a.poe_status_code === 6;
-      const poeClass = powered ? 'poe-powered' : searching ? 'poe-searching' : fault ? 'poe-fault' :
-        a.poe_enabled === false ? 'poe-disabled' : a.poe_enabled === true ? 'poe-enabled' : 'poe-unknown';
-      const poeLabel = powered ? 'ZASILA · ' + Number(a.poe_power_w || 0).toFixed(1) + ' W' :
-        searching ? 'PoE · SZUKA' : fault ? 'PoE · BŁĄD' :
-        a.poe_enabled === false ? 'PoE · OFF' : a.poe_enabled === true ? 'PoE · ON' : 'PoE · BRAK DANYCH';
-      const speed = Number(a.speed_bps);
-      const speedLabel = Number.isFinite(speed) && speed > 0
-        ? (speed >= 1000000000 ? (speed / 1000000000) + ' Gb/s' : Math.round(speed / 1000000) + ' Mb/s')
-        : '—';
-      const name = a.port_alias || a.port_name || p.entity_id.replace(/^binary_sensor\./, '').replace(/_link$/, '');
-      return '<div class="port ' + (linkUp ? 'up' : 'down') + '">' +
-        '<div class="porttop"><span class="led"></span><span class="portname">' + esc(name) + '</span></div>' +
-        '<div class="state">' + (linkUp ? 'LINK UP' : 'LINK DOWN') + ' · ' + esc(speedLabel) + '</div>' +
-        '<div class="poe ' + poeClass + '">' + esc(poeLabel) + '</div>' +
-        '<div class="state">' + esc(a.poe_status || 'Brak danych PoE') + '</div></div>';
-    }).join('') : '<div class="stat">Statusy portów pojawią się po pierwszym odczycie SNMP.</div>';
-
-    this.innerHTML = [
-      '<style>',
-      ':host{display:block;color:var(--primary-text-color)}',
-      '.wrap{font-family:Arial,sans-serif;background:var(--ha-card-background,var(--card-background-color));border:1px solid var(--divider-color);border-radius:20px;overflow:hidden}',
-      '.hero{padding:24px;background:linear-gradient(120deg,#071b35,#0d4770 65%,#00a6b2);color:white;display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}',
-      '.brand{font-size:12px;letter-spacing:2px;text-transform:uppercase;opacity:.8}.title{font-size:26px;font-weight:750;margin-top:5px}.subtitle{font-size:13px;opacity:.85;margin-top:6px}.chip{border:1px solid #ffffff55;background:#ffffff14;border-radius:999px;padding:8px 12px;font-size:12px}',
-      '.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:16px}.stat{border:1px solid var(--divider-color);border-radius:14px;padding:14px;min-width:0}.label{font-size:12px;color:var(--secondary-text-color)}.value{font-size:23px;font-weight:700;margin-top:6px;overflow-wrap:anywhere}',
-      '.section{padding:0 16px 16px}.section h3{font-size:15px;margin:4px 0 12px}.hint{font-size:12px;color:var(--secondary-text-color);margin:-4px 0 12px}.ports{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px}',
-      '.port{border:1px solid var(--divider-color);border-radius:10px;padding:10px 7px;background:var(--secondary-background-color);min-width:0}.port.up{border-color:#18a66a;background:color-mix(in srgb,#18a66a 8%,var(--card-background-color))}.port.down{opacity:.78}',
-      '.porttop{display:flex;align-items:center;gap:5px;min-width:0}.led{flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:#9099a4}.up .led{background:#18a66a;box-shadow:0 0 8px #18a66a77}.portname{font-size:12px;font-weight:700;overflow-wrap:anywhere}',
-      '.state{font-size:10px;color:var(--secondary-text-color);margin-top:6px;overflow-wrap:anywhere}.poe{font-size:10px;font-weight:750;border-radius:6px;padding:5px 4px;margin-top:8px;text-align:center;overflow-wrap:anywhere}',
-      '.poe-powered{background:#18a66a22;color:var(--success-color,#168554);border:1px solid #18a66a66}.poe-enabled{background:#d49a1720;color:var(--warning-color,#a77700);border:1px solid #d49a1766}.poe-searching{background:#168bd21a;color:var(--info-color,#168bd2);border:1px solid #168bd266}.poe-disabled{background:#88888814;color:var(--secondary-text-color);border:1px solid var(--divider-color)}.poe-fault{background:#d9302520;color:var(--error-color,#d93025);border:1px solid #d9302566}.poe-unknown{background:var(--secondary-background-color);color:var(--secondary-text-color);border:1px dashed var(--divider-color)}',
-      '.foot{padding:12px 16px;border-top:1px solid var(--divider-color);font-size:11px;color:var(--secondary-text-color);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}',
-      '@media(max-width:900px){.ports{grid-template-columns:repeat(6,minmax(0,1fr))}}@media(max-width:650px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.ports{grid-template-columns:repeat(3,minmax(0,1fr))}.title{font-size:22px}}',
-      '</style>',
-      '<div class="wrap"><div class="hero"><div><div class="brand">Aruba Networking · Switch management</div><div class="title">HP 2530 Aruba</div><div class="subtitle">' + esc(desc && desc.state || 'HP J9772A 2530-48G-PoEP') + ' · monitoring przez SNMP</div></div><div class="chip">● ' + esc(this.config.host || 'SWITCH_IP') + ' · SNMP v2c</div></div>',
-      '<div class="stats">',
-      '<div class="stat"><div class="label">Porty aktywne</div><div class="value">' + esc(active && active.state || on) + '</div></div>',
-      '<div class="stat"><div class="label">Porty nieaktywne</div><div class="value">' + esc(down && down.state || '—') + '</div></div>',
-      '<div class="stat"><div class="label">PoE włączone</div><div class="value">' + (poeKnown ? poeEnabled : '—') + '</div></div>',
-      '<div class="stat"><div class="label">Urządzenia zasilane PoE</div><div class="value">' + (poeKnown ? poeDelivering : '—') + '</div></div>',
-      '<div class="stat"><div class="label">Pobór mocy PoE</div><div class="value">' + (poeKnown ? watts.toFixed(1) + ' W' : '—') + '</div></div>',
-      '<div class="stat"><div class="label">Czas pracy</div><div class="value">' + esc(uptimeText) + '</div></div></div>',
-      '<div class="section"><h3>Mapa portów · link i PoE</h3><div class="hint">Zielony = podaje zasilanie · żółty = PoE włączone · szary = wyłączone lub brak danych.</div><div class="ports">' + portMarkup + '</div></div>',
-      '<div class="foot"><span>SNMP · odświeżanie co 30 s · tylko odczyt</span><span>Odczyt PoE zależy od tabel SNMP udostępnianych przez firmware</span></div></div>'
-    ].join('');
+    if(!this._hass)return;
+    const all=Object.values(this._hass.states).filter(s=>/^(sensor|binary_sensor)\.hp_?2530_/.test(s.entity_id));
+    const find=(part)=>all.find(s=>s.entity_id.includes(part));
+    const ports=all.filter(s=>s.entity_id.startsWith('binary_sensor.')&&s.entity_id.endsWith('_link')).sort((a,b)=>Number(a.attributes.port_index||((a.entity_id.match(/port_(\d+)/)||[])[1]||999))-Number(b.attributes.port_index||((b.entity_id.match(/port_(\d+)/)||[])[1]||999)));
+    const now=Date.now();
+    ports.forEach(p=>{const a=p.attributes||{},rx=Number(a.rx_bytes),tx=Number(a.tx_bytes),old=this._last[p.entity_id];if(old&&now>old.t&&rx>=old.rx&&tx>=old.tx&&(rx!==old.rx||tx!==old.tx)){const dt=(now-old.t)/1000;if(dt>.25)this._rates[p.entity_id]={rx:(rx-old.rx)*8/dt,tx:(tx-old.tx)*8/dt,t:now};}if(Number.isFinite(rx)&&Number.isFinite(tx))this._last[p.entity_id]={rx:rx,tx:tx,t:now};if(this._rates[p.entity_id]&&now-this._rates[p.entity_id].t>180000)delete this._rates[p.entity_id];});
+    const active=ports.filter(p=>p.state==='on').length,down=ports.length-active;
+    const poeKnown=ports.filter(p=>(p.attributes||{}).poe_supported_by_snmp).length;
+    const delivering=ports.filter(p=>Number((p.attributes||{}).poe_status_code)===3);
+    const watts=ports.reduce((s,p)=>s+Math.max(0,Number((p.attributes||{}).poe_power_w)||0),0);
+    const rxTotal=ports.reduce((s,p)=>s+Math.max(0,Number((p.attributes||{}).rx_bytes)||0),0),txTotal=ports.reduce((s,p)=>s+Math.max(0,Number((p.attributes||{}).tx_bytes)||0),0);
+    const rxRate=ports.reduce((s,p)=>s+(this._rates[p.entity_id]?.rx||0),0),txRate=ports.reduce((s,p)=>s+(this._rates[p.entity_id]?.tx||0),0);
+    const uptime=find('uptime'),descr=find('opis'),sec=Number(uptime&&uptime.state);
+    const uptimeText=Number.isFinite(sec)&&sec>=0?Math.floor(sec/86400)+' d '+Math.floor(sec%86400/3600)+' h':(uptime?uptime.state:'—');
+    const filtered=ports.filter(p=>{const a=p.attributes||{},label=String(a.port_alias||a.port_name||p.entity_id);const match=!this._search||(label+' '+p.entity_id+' '+(a.poe_status||'')).toLowerCase().includes(this._search.toLowerCase());const code=Number(a.poe_status_code);return match&&(this._filter==='all'||(this._filter==='up'&&p.state==='on')||(this._filter==='down'&&p.state!=='on')||(this._filter==='poe'&&code===3)||(this._filter==='fault'&&(code===4||code===6||Number(a.rx_errors)>0||Number(a.tx_errors)>0)));});
+    const portHtml=filtered.map(p=>{const a=p.attributes||{},idx=a.port_index||((p.entity_id.match(/port_(\d+)/)||[])[1]||'—'),up=p.state==='on',code=Number(a.poe_status_code),power=Number(a.poe_power_w),rate=this._rates[p.entity_id]||{},name=a.port_alias||a.port_name||('Port '+idx),speed=Number(a.speed_bps),speedText=Number.isFinite(speed)&&speed>0?(speed>=1e9?(speed/1e9)+'G':Math.round(speed/1e6)+'M'):'—',cls=code===3?'powered':code===2?'searching':code===4||code===6?'fault':a.poe_enabled===false?'disabled':'unknown',poe=code===3?(Number.isFinite(power)?power.toFixed(1)+' W':'ZASILA'):code===2?'SZUKA':code===4||code===6?'BŁĄD':a.poe_enabled===false?'PoE OFF':a.poe_enabled===true?'PoE ON':'PoE —';return '<button class="port '+(up?'up':'down')+(this._selectedPort===p.entity_id?' selected':'')+'" data-port="'+this.esc(p.entity_id)+'" type="button" title="'+this.esc(name)+'"><div class="porttop"><b>'+this.esc(idx)+'</b><i></i></div><div class="pname">'+this.esc(name)+'</div><div class="link">'+(up?'LINK UP':'NO LINK')+'</div><div class="speed">'+this.esc(speedText)+'</div><div class="poe '+cls+'"><i></i>'+this.esc(poe)+'</div><div class="rates"><span>↓ '+this.esc(this.rate(rate.rx))+'</span><span>↑ '+this.esc(this.rate(rate.tx))+'</span></div></button>';}).join('');
+    const selected=ports.find(p=>p.entity_id===this._selectedPort);let detail='';
+    if(selected){const a=selected.attributes||{},r=this._rates[selected.entity_id]||{},idx=a.port_index||((selected.entity_id.match(/port_(\d+)/)||[])[1]||'—');detail='<section class="detail"><div class="detailtop"><div><small>WYBRANY PORT</small><h3>'+this.esc(a.port_alias||a.port_name||('Port '+idx))+'</h3><p>Port '+this.esc(idx)+' · '+(selected.state==='on'?'Link aktywny':'Brak połączenia')+'</p></div><button data-close type="button">×</button></div><div class="detailgrid">'+[['Prędkość',this.rate(a.speed_bps)],['Status PoE',a.poe_status],['Pobór PoE',Number.isFinite(Number(a.poe_power_w))?Number(a.poe_power_w).toFixed(2)+' W':'—'],['Ruch RX / TX',this.rate(r.rx)+' / '+this.rate(r.tx)],['Odebrano łącznie',this.bytes(a.rx_bytes)],['Wysłano łącznie',this.bytes(a.tx_bytes)],['Błędy RX',a.rx_errors],['Błędy TX',a.tx_errors]].map(x=>'<div><span>'+this.esc(x[0])+'</span><b>'+this.esc(x[1])+'</b></div>').join('')+'</div><button class="more" data-more="'+this.esc(selected.entity_id)+'" type="button">Szczegóły encji Home Assistant ↗</button></section>';}
+    const filters=[['all','Wszystkie'],['up','Aktywne'],['down','Nieaktywne'],['poe','Zasilane PoE'],['fault','Błędy']].map(x=>'<button class="filter '+(this._filter===x[0]?'chosen':'')+'" data-filter="'+x[0]+'" type="button">'+x[1]+'</button>').join('');
+    const esc=this.esc.bind(this);
+    this.innerHTML='<style>'+
+      ':host{display:block;--navy:#081a2c;--cyan:#4dd8e8;--green:#39d98a;--amber:#f7bd4b;--red:#ff6978;color:var(--primary-text-color)}*{box-sizing:border-box}.shell{overflow:hidden;border:1px solid var(--divider-color);border-radius:22px;background:var(--ha-card-background,var(--card-background-color));font-family:Inter,system-ui,-apple-system,sans-serif}'+
+      '.hero{padding:25px 28px;color:#f4f9fc;background:radial-gradient(ellipse at 88% 0%,#155d7b 0,transparent 38%),linear-gradient(115deg,#081a2c,#0a2740 65%,#0b3e55)}.herotop{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap}.brand{display:flex;gap:12px;align-items:center}.brandicon{display:grid;place-items:center;width:44px;height:44px;border:1px solid #4dd8e84c;border-radius:13px;background:#4dd8e81b;color:#4dd8e8;font-size:23px}.eyebrow{font-size:10px;letter-spacing:2px;font-weight:800;color:#8eb7ca}.title{font-size:clamp(22px,3vw,30px);font-weight:780;letter-spacing:-.8px;margin:4px 0;color:#fff}.subtitle{font-size:12px;color:#a8c2d2}.connection{border:1px solid #3dd99450;background:#20b87819;border-radius:99px;padding:9px 12px;color:#9af1c4;font-size:10px;font-weight:800;white-space:nowrap}.greenDot{display:inline-block;width:7px;height:7px;margin-right:7px;border-radius:50%;background:#39d98a}.herobottom{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:20px;padding-top:15px;border-top:1px solid #ffffff17;color:#b5ccda;font-size:11px}.herobottom b{color:#fff}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;padding:17px 18px 6px}.metric{border:1px solid var(--divider-color);border-radius:15px;padding:15px;min-width:0;background:var(--card-background-color)}.metriclabel{font-size:11px;color:var(--secondary-text-color);font-weight:650}.metricvalue{font-size:clamp(21px,2.3vw,28px);font-weight:780;letter-spacing:-.7px;margin-top:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.metricfoot{font-size:10px;color:var(--secondary-text-color);margin-top:6px}.content{padding:18px}.sectionhead{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:14px}.sectiontitle{font-size:16px;font-weight:780}.muted{font-size:11px;color:var(--secondary-text-color);margin-top:4px}.count{font-size:10px;border:1px solid var(--divider-color);border-radius:8px;padding:6px 9px;color:var(--secondary-text-color)}.toolbar{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:13px}.filters{display:flex;gap:5px;flex-wrap:wrap}.filter{border:1px solid var(--divider-color);background:transparent;color:var(--secondary-text-color);border-radius:8px;padding:7px 10px;font:inherit;font-size:10px;cursor:pointer}.filter.chosen{color:var(--primary-text-color);border-color:#26a8bd80;background:#20a9bf16}.search{width:min(100%,230px);border:1px solid var(--divider-color);background:var(--secondary-background-color);color:var(--primary-text-color);border-radius:9px;padding:9px 11px;font:inherit;font-size:11px;outline:none}.search:focus{border-color:#26a8bd}.legend{display:flex;gap:13px;flex-wrap:wrap;margin-bottom:12px;color:var(--secondary-text-color);font-size:10px}.legend span{display:flex;align-items:center;gap:6px}.legend i{width:7px;height:7px;border-radius:3px;background:#7d8995}.legend .lg{background:#39d98a}.legend .lc{background:#4dd8e8}.legend .la{background:#f7bd4b}.legend .lr{background:#ff6978}'+
+      '.ports{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px}.port{appearance:none;text-align:left;min-width:0;cursor:pointer;color:var(--primary-text-color);border:1px solid var(--divider-color);border-top:2px solid #7d8793;border-radius:11px;padding:9px 8px 8px;background:var(--secondary-background-color);transition:border-color .15s,transform .15s;font:inherit}.port:hover{transform:translateY(-2px);border-color:#38b9ccaa}.port.up{border-top-color:#39d98a}.port.selected{border-color:#4dd8e8;box-shadow:0 0 0 1px #4dd8e84b}.porttop{display:flex;justify-content:space-between;align-items:center;font-size:12px}.porttop i{width:7px;height:7px;border-radius:50%;background:#7d8995}.port.up .porttop i{background:#39d98a;box-shadow:0 0 7px #39d98a88}.pname{font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:9px;min-height:13px}.link{font-size:8px;letter-spacing:.4px;color:var(--secondary-text-color);margin-top:5px}.port.up .link{color:#21aa70}.speed{font-size:10px;font-weight:800;margin-top:5px}.poe{display:flex;align-items:center;gap:4px;font-size:9px;font-weight:800;margin-top:8px;white-space:nowrap;overflow:hidden}.poe i{width:5px;height:5px;border-radius:50%;background:#8793a0;flex-shrink:0}.poe.powered{color:#21aa70}.poe.powered i{background:#39d98a}.poe.searching{color:#17a9bd}.poe.searching i{background:#4dd8e8}.poe.fault{color:#e34b5c}.poe.fault i{background:#ff6978}.poe.disabled{color:var(--secondary-text-color)}.rates{display:flex;justify-content:space-between;gap:3px;margin-top:8px;padding-top:7px;border-top:1px solid var(--divider-color);font-size:8px;color:var(--secondary-text-color)}.rates span{overflow:hidden;text-overflow:ellipsis}.empty{grid-column:1/-1;text-align:center;padding:30px 12px;color:var(--secondary-text-color);font-size:12px;border:1px dashed var(--divider-color);border-radius:12px}'+
+      '.detail{margin-top:15px;border:1px solid #35bed044;border-radius:15px;padding:16px;background:color-mix(in srgb,#1aa6ba 4%,var(--card-background-color))}.detailtop{display:flex;justify-content:space-between;gap:10px}.detail small{font-size:10px;letter-spacing:1.5px;color:#17a9bd;font-weight:800}.detail h3{margin:5px 0;font-size:16px}.detail p{margin:0;font-size:11px;color:var(--secondary-text-color)}.detailtop button{width:30px;height:30px;border:1px solid var(--divider-color);border-radius:8px;background:transparent;color:var(--primary-text-color);font-size:19px;cursor:pointer}.detailgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:15px}.detailgrid>div{padding:10px;border:1px solid var(--divider-color);border-radius:9px;min-width:0}.detailgrid span{display:block;font-size:10px;color:var(--secondary-text-color)}.detailgrid b{display:block;font-size:12px;margin-top:6px;overflow-wrap:anywhere}.more{margin-top:12px;background:transparent;color:var(--primary-text-color);border:1px solid var(--divider-color);padding:8px 11px;border-radius:8px;font:inherit;font-size:10px;cursor:pointer}.lower{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}.infocard{border:1px solid var(--divider-color);border-radius:14px;padding:15px;min-width:0}.infotitle{font-size:12px;font-weight:800}.infotext{font-size:10px;color:var(--secondary-text-color);margin-top:4px}.summary{display:flex;justify-content:space-between;gap:10px;font-size:11px;margin-top:13px}.summary span{color:var(--secondary-text-color)}.summary b{text-align:right}.trafficrow{display:grid;grid-template-columns:30px 1fr auto;align-items:center;gap:9px;margin-top:14px;font-size:10px}.track{height:6px;border-radius:99px;background:var(--divider-color);overflow:hidden}.fill{height:100%;border-radius:99px;background:#4dd8e8}.fill.tx{background:#9c8bff}.foot{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:13px 18px;border-top:1px solid var(--divider-color);font-size:10px;color:var(--secondary-text-color)}'+
+      '@media(max-width:1000px){.ports{grid-template-columns:repeat(6,minmax(0,1fr))}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:650px){.hero{padding:18px}.metrics{padding:12px 12px 4px;gap:8px}.metric{padding:12px}.content{padding:12px}.ports{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.port{padding:8px 6px}.detailgrid{grid-template-columns:repeat(2,minmax(0,1fr))}.lower{grid-template-columns:1fr}.search{width:100%}}@media(max-width:390px){.ports{grid-template-columns:repeat(3,minmax(0,1fr))}'+
+      '</style><div class="shell"><header class="hero"><div class="herotop"><div class="brand"><div class="brandicon">⌘</div><div><div class="eyebrow">NETWORK OPERATIONS · ARUBA</div><div class="title">'+esc(this.config.name||'HP Aruba 2530')+'</div><div class="subtitle">'+esc(descr&&descr.state!=='unknown'?descr.state:'HP J9772A · 2530-48G-PoEP')+'</div></div></div><div class="connection"><span class="greenDot"></span>SNMP MONITORING</div></div><div class="herobottom"><span>Host <b>'+esc(this.config.host||'Przełącznik')+'</b>　·　Porty <b>'+ports.length+'</b>　·　Czas pracy <b>'+esc(uptimeText)+'</b></span><span>● STATUS LIVE · HOME ASSISTANT</span></div></header>'+
+      '<section class="metrics"><div class="metric"><div class="metriclabel">PORTY AKTYWNE</div><div class="metricvalue">'+active+' <span style="font-size:13px;color:var(--secondary-text-color);font-weight:500">/ '+(ports.length||48)+'</span></div><div class="metricfoot">'+down+' portów bez linku</div></div><div class="metric"><div class="metriclabel">ŁĄCZNY POBÓR PoE</div><div class="metricvalue">'+(poeKnown?watts.toFixed(1)+' W':'—')+'</div><div class="metricfoot">'+(poeKnown?delivering.length+' urządzeń z zasilaniem':'Brak odczytu PoE')+'</div></div><div class="metric"><div class="metriclabel">RUCH RX · ODBIERANIE</div><div class="metricvalue">'+esc(this.rate(rxRate))+'</div><div class="metricfoot">Odebrano łącznie '+esc(this.bytes(rxTotal))+'</div></div><div class="metric"><div class="metriclabel">RUCH TX · WYSYŁANIE</div><div class="metricvalue">'+esc(this.rate(txRate))+'</div><div class="metricfoot">Wysłano łącznie '+esc(this.bytes(txTotal))+'</div></div></section>'+
+      '<main class="content"><div class="sectionhead"><div><div class="sectiontitle">Mapa portów</div><div class="muted">Kliknij port, aby zobaczyć szczegóły i liczniki.</div></div><div class="count">'+filtered.length+' / '+ports.length+' PORTÓW</div></div><div class="toolbar"><div class="filters">'+filters+'</div><input class="search" type="search" placeholder="⌕  Szukaj portu…" value="'+esc(this._search)+'" aria-label="Szukaj portu"></div><div class="legend"><span><i class="lg"></i> Link aktywny</span><span><i></i> Brak linku</span><span><i class="lc"></i> PoE szuka</span><span><i class="la"></i> PoE aktywne</span><span><i class="lr"></i> Błąd PoE</span></div><div class="ports">'+(portHtml||'<div class="empty">Brak portów dla wybranego filtra.</div>')+'</div>'+detail+
+      '<div class="lower"><div class="infocard"><div class="infotitle">Przepustowość łącza</div><div class="infotext">Chwilowy transfer wyliczany z kolejnych odczytów liczników</div><div class="trafficrow"><span>RX</span><div class="track"><div class="fill" style="width:'+Math.min(100,rxRate/1e9*100)+'%"></div></div><b>'+esc(this.rate(rxRate))+'</b></div><div class="trafficrow"><span>TX</span><div class="track"><div class="fill tx" style="width:'+Math.min(100,txRate/1e9*100)+'%"></div></div><b>'+esc(this.rate(txRate))+'</b></div><div class="infotext" style="margin-top:12px">Po odświeżeniu karty potrzeba dwóch próbek, aby obliczyć transfer.</div></div><div class="infocard"><div class="infotitle">Stan zasilania PoE</div><div class="infotext">Dane z tabel SNMP przełącznika</div><div class="summary"><span>Porty z odczytem PoE</span><b>'+poeKnown+' / '+ports.length+'</b></div><div class="summary"><span>Podają zasilanie</span><b>'+(poeKnown?delivering.length:'—')+'</b></div><div class="summary"><span>Łączny pobór zmierzony</span><b>'+(poeKnown?watts.toFixed(2)+' W':'—')+'</b></div><div class="summary"><span>Czas pracy</span><b>'+esc(uptimeText)+'</b></div></div></div></main><footer class="foot"><span>HP / Aruba 2530 · SNMP · tylko odczyt</span><span>Ruch chwilowy pojawi się po zebraniu kolejnych próbek</span></footer></div>';
+    this.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{this._filter=b.dataset.filter;this.render();}));
+    const search=this.querySelector('.search');if(search)search.addEventListener('input',e=>{this._search=e.target.value;const pos=e.target.selectionStart;this.render();const next=this.querySelector('.search');if(next){next.focus();try{next.setSelectionRange(pos,pos);}catch(_){}}});
+    this.querySelectorAll('[data-port]').forEach(b=>b.addEventListener('click',()=>{this._selectedPort=b.dataset.port;this.render();}));
+    this.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>{this._selectedPort=null;this.render();}));
+    this.querySelectorAll('[data-more]').forEach(b=>b.addEventListener('click',()=>this.dispatchEvent(new CustomEvent('hass-more-info',{detail:{entityId:b.dataset.more},bubbles:true,composed:true}))));
   }
 }
-customElements.define('hp2530-card', HP2530Card);
-window.customCards = window.customCards || [];
-window.customCards.push({type:'hp2530-card', name:'HP 2530 Aruba', description:'Panel HP/Aruba 2530 z mapą portów, linkiem i statusem PoE'});
+customElements.define('hp2530-card',HP2530Card);
+window.customCards=window.customCards||[];
+window.customCards.push({type:'hp2530-card',name:'HP 2530 Aruba',description:'Nowoczesny panel HP/Aruba 2530 z mapą portów, transferem i monitoringiem PoE'});
