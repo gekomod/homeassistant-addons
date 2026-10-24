@@ -59,7 +59,7 @@ class HPSystemSensor(HPBase, SensorEntity):
     def native_value(self):
         value = self.coordinator.data.get(self.key)
         try:
-            return (round(int(value) / 1000, 3) if self.key == "poe_used" else int(value)) if value is not None else None
+            return int(value) if value is not None else None
         except (ValueError, TypeError):
             return value
 
@@ -83,6 +83,6 @@ class HPPortSensor(HPBase, SensorEntity):
         interface = self.coordinator.data.get("interfaces", {}).get(self.idx, {})
         value = interface.get(self.key)
         try:
-            return int(value) if value is not None else None
+            return (round(int(value) / 1000, 3) if self.key == "poe_used" else int(value)) if value is not None else None
         except (ValueError, TypeError):
             return None
