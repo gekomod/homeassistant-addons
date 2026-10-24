@@ -1,0 +1,9 @@
+title: HP 2530 Aruba
+views:
+  - title: HP 2530 Aruba
+    path: hp2530
+    icon: mdi:ethernet
+    type: panel
+    cards:
+      - type: custom:hp2530-card
+        host: SWITCH_IP
