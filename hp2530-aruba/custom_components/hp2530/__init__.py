@@ -9,7 +9,7 @@ from .const import DOMAIN, PLATFORMS
 from .coordinator import HP2530Coordinator
 
 
-async def _async_set_port_name(call: ServiceCall) -> None:
+async def _async_set_port_name(hass: HomeAssistant, call: ServiceCall) -> None:
     """Persist a port alias on the Aruba switch through SNMP SET."""
     host = str(call.data["host"]).strip().lower()
     port_index = str(call.data["port_index"]).strip()
@@ -39,7 +39,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_register(
             DOMAIN,
             "set_port_name",
-            _async_set_port_name,
+            lambda call: _async_set_port_name(hass, call),
             schema=vol.Schema({
                 vol.Required("host"): str,
                 vol.Required("port_index"): str,
