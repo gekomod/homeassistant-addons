@@ -9,6 +9,8 @@ Custom integration and standalone Lovelace dashboard for HP/Aruba 2530 switches.
 - Discovery of physical interfaces, link status, speed, RX/TX counters and errors.
 - Best-effort PoE status and power readings via POWER-ETHERNET-MIB.
 - Separate Lovelace dashboard with a visual port map.
+- Custom port names, editable from the port details dialog and saved in the browser.
+- Polish and English interface, switchable from the card header.
 - Read-only monitoring: no port, VLAN or PoE configuration is changed.
 
 ## Requirements
