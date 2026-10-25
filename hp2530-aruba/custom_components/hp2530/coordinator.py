@@ -116,6 +116,44 @@ class HP2530Coordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"SNMP query failed for {oid}: {err.decode(errors='replace').strip()}")
         return out.decode(errors="replace").splitlines()
 
+    async def async_set_port_alias(self, index: str | int, alias: str) -> None:
+        """Write a port alias to the switch using IF-MIB ifAlias (SNMP SET)."""
+        community = self.entry.options.get("write_community") or self.cfg.get("write_community")
+        if not community:
+            raise ValueError(
+                "SNMP write community is not configured. Set it in the integration options."
+            )
+        alias = str(alias).strip()
+        if len(alias) > 64:
+            raise ValueError("Port alias must be 64 characters or fewer.")
+        if any(ord(ch) < 32 for ch in alias):
+            raise ValueError("Port alias cannot contain control characters.")
+        oid = f"1.3.6.1.2.1.31.1.1.1.18.{index}"
+        cfg = self.cfg
+        cmd = [
+            "snmpset", "-On", "-t", "3", "-r", "0",
+            "-v" + cfg.get(CONF_VERSION, "2c"),
+            "-c", community,
+            f'{cfg[CONF_HOST]}:{cfg.get("port", DEFAULT_PORT)}',
+            oid, "s", alias,
+        ]
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            out, err = await asyncio.wait_for(proc.communicate(), timeout=7)
+        except (OSError, asyncio.TimeoutError) as exc:
+            raise RuntimeError(f"SNMP SET failed: {exc}") from exc
+        output = (out + err).decode(errors="replace").strip()
+        if proc.returncode != 0 or not out.strip() or "notWritable" in output or "authorizationError" in output:
+            raise RuntimeError(
+                "The switch rejected the port-name write. Check SNMP write access and "
+                f"firmware support for IF-MIB ifAlias. Details: {output or 'no response'}"
+            )
+        await self.async_request_refresh()
+
     async def _async_update_data(self):
         try:
             desc_lines, uptime_lines, name_lines = await asyncio.gather(
