@@ -1,0 +1,22 @@
+set_port_name:
+  name: Set port name on Aruba switch
+  description: Write a port alias to the switch using SNMP SET. Requires SNMP write access and firmware support for IF-MIB ifAlias.
+  fields:
+    host:
+      name: Switch host
+      description: IP address or host configured in the integration.
+      required: true
+      selector:
+        text:
+    port_index:
+      name: SNMP interface index
+      description: Numeric SNMP interface index for the port.
+      required: true
+      selector:
+        text:
+    name:
+      name: Port alias
+      description: Alias to save on the switch. Leave empty to clear it.
+      required: true
+      selector:
+        text:
