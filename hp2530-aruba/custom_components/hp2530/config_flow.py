@@ -46,9 +46,6 @@ async def _test_connection(data):
 class HP2530OptionsFlow(config_entries.OptionsFlow):
     """Configure optional SNMP write access for setting port aliases."""
 
-    def __init__(self, config_entry):
-        self.config_entry = config_entry
-
     async def async_step_init(self, user_input=None):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
@@ -74,7 +71,7 @@ class HP2530ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     def async_get_options_flow(config_entry):
-        return HP2530OptionsFlow(config_entry)
+        return HP2530OptionsFlow()
 
 
     async def async_step_user(self, user_input=None):
