@@ -43,8 +43,39 @@ async def _test_connection(data):
         raise CannotConnect
 
 
+class HP2530OptionsFlow(config_entries.OptionsFlow):
+    """Configure optional SNMP write access for setting port aliases."""
+
+    def __init__(self, config_entry):
+        self.config_entry = config_entry
+
+    async def async_step_init(self, user_input=None):
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema({
+                vol.Optional(
+                    "write_community",
+                    default=self.config_entry.options.get(
+                        "write_community",
+                        self.config_entry.data.get("write_community", ""),
+                    ),
+                ): str,
+            }),
+            description_placeholders={
+                "hint": "Optional. Required only to write port aliases to the switch. Leave empty for read-only monitoring."
+            },
+        )
+
+
 class HP2530ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
+
+    @staticmethod
+    def async_get_options_flow(config_entry):
+        return HP2530OptionsFlow(config_entry)
+
 
     async def async_step_user(self, user_input=None):
         errors = {}
