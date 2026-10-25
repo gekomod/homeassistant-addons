@@ -9,7 +9,7 @@ Custom integration and standalone Lovelace dashboard for HP/Aruba 2530 switches.
 - Discovery of physical interfaces, link status, speed, RX/TX counters and errors.
 - Best-effort PoE status and power readings via POWER-ETHERNET-MIB.
 - Separate Lovelace dashboard with a visual port map.
-- Custom port names, editable from the port details dialog and saved in the browser.
+- Custom port aliases written to the switch through IF-MIB `ifAlias` using SNMP SET (requires a configured SNMP write community and firmware support). The dashboard reads the alias back from the switch.
 - Polish and English interface, switchable from the card header.
 - Read-only monitoring: no port, VLAN or PoE configuration is changed.
 
@@ -33,6 +33,8 @@ Copy the directory custom_components/hp2530 to:
 Adjust the destination to match your Home Assistant configuration directory. Ensure the Home Assistant service user can read the files.
 
 Restart Home Assistant, then open Settings → Devices & services → Add integration → HP 2530 Aruba. Enter your switch IP address, read-only community, SNMP version and port. The public defaults are intentionally placeholders; use your own local settings.
+
+To rename ports on the switch itself, open the integration's **Options** and enter the SNMP write community in `write_community`. This is optional; leave it empty to keep read-only monitoring. The switch must allow SNMP SET for IF-MIB `ifAlias`; some firmware/configurations may reject writes. The read-only community remains separate from the write community.
 
 ## Install the dashboard card
 
