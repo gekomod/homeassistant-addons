@@ -36,10 +36,13 @@ async def _async_set_port_name(hass: HomeAssistant, call: ServiceCall) -> None:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not hass.services.has_service(DOMAIN, "set_port_name"):
+        async def handle_set_port_name(call: ServiceCall) -> None:
+            await _async_set_port_name(hass, call)
+
         hass.services.async_register(
             DOMAIN,
             "set_port_name",
-            lambda call: _async_set_port_name(hass, call),
+            handle_set_port_name,
             schema=vol.Schema({
                 vol.Required("host"): str,
                 vol.Required("port_index"): str,
